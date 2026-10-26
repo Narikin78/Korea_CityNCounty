@@ -21,6 +21,9 @@ button,input { font:inherit; }
 .brand { display:flex; align-items:baseline; gap:13px; min-width:0; }
 h1 { font-size:20px; line-height:1.2; margin:0; letter-spacing:-.04em; white-space:nowrap; }
 .tagline { color:var(--muted); font-size:13px; }
+.top-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:7px; margin-left:auto; }
+.download-button { border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); padding:7px 10px; font-size:11px; cursor:pointer; white-space:nowrap; }
+.download-button:hover { background:#f0f5f1; border-color:#b9c9bf; }
 .save-state { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; white-space:nowrap; }
 .save-dot { width:7px; height:7px; border-radius:50%; background:#49a477; }
 main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-columns:minmax(0,1fr) 366px; gap:14px; padding:14px; }
@@ -80,14 +83,14 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
 .side-foot { padding:10px 15px 12px; border-top:1px solid var(--line); color:var(--muted); font-size:10px; line-height:1.5; }
 @media (max-width:850px) {
   html,body { height:auto; } body { overflow:auto; }
-  .app { display:block; height:auto; min-height:100vh; overflow:visible; } .topbar { min-height:68px; padding:12px 16px; }
+  .app { display:block; height:auto; min-height:100vh; overflow:visible; } .topbar { min-height:68px; padding:12px 16px; flex-wrap:wrap; }
   .brand { display:block; } h1 { font-size:17px; } .tagline { display:block; margin-top:4px; font-size:11px; }
   main { height:auto; overflow:visible; display:flex; flex-direction:column; padding:10px; gap:10px; }
   .map-panel { min-height:66vh; } .map-head { display:block; } .counts { justify-content:flex-start; margin-top:9px; }
   .map-wrap { min-height:52vh; } #map { min-height:52vh; } .side-panel { height:58vh; min-height:380px; }
 }
 @media (max-width:420px) {
-  .topbar { gap:8px; } .save-state { font-size:10px; } .side-head { padding:14px 12px 10px; }
+  .topbar { gap:8px; } .top-actions { width:100%; justify-content:flex-start; } .save-state { font-size:10px; } .side-head { padding:14px 12px 10px; }
   .list-head,.region-row { grid-template-columns:minmax(62px,1fr) repeat(4,37px); } .region-list { padding-inline:5px; }
 }
 </style>
@@ -96,7 +99,7 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
 <div class="app">
   <header class="topbar">
     <div class="brand"><h1>대한민국 나의 지도</h1><span class="tagline">살고, 묵고, 걸었던 곳을 기록해 보세요</span></div>
-    <div class="save-state" title="기록은 현재 기기의 브라우저에 저장됩니다"><span class="save-dot" aria-hidden="true"></span><span id="save-message">이 기기에 자동 저장</span></div>
+    <div class="top-actions"><button class="download-button" id="save-image" type="button">이미지 저장</button><button class="download-button" id="save-json" type="button">JSON 저장</button><div class="save-state" title="기록은 현재 기기의 브라우저에 저장됩니다"><span class="save-dot" aria-hidden="true"></span><span id="save-message">이 기기에 자동 저장</span></div></div>
   </header>
   <main>
     <section class="map-panel" aria-label="대한민국 지도">
@@ -253,7 +256,7 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
   }
   function fillFor(id) {
     const chosen=statuses.filter(s=>records[id]&&records[id][s.id]);
-    if(!chosen.length) return 'var(--land)';
+    if(!chosen.length) return '#fafcf9';
     if(chosen.length===1) return chosen[0].color;
     return `url(#mix-${chosen.map(s=>s.id).join('-')})`;
   }
@@ -279,6 +282,47 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
     try {localStorage.setItem(storageKey,JSON.stringify(records));}
     catch {document.getElementById('save-message').textContent='브라우저 저장을 사용할 수 없습니다';}
   }
+  function downloadBlob(blob,filename) {
+    const url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url; link.download=filename; document.body.append(link); link.click(); link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  function fileDate() {return new Date().toISOString().slice(0,10);}
+  function saveJSON() {
+    const exportedRecords={};
+    for(const d of areas.features) {
+      const id=d.properties.id,value=records[id];
+      if(value&&statuses.some(s=>value[s.id])) exportedRecords[id]={...value};
+    }
+    const data={
+      format:'korea-trip-map',version:1,exportedAt:new Date().toISOString(),
+      statuses:statuses.map(({id,name,detail,color})=>({id,name,detail,color})),
+      regions:areas.features.map(d=>({id:d.properties.id,name:d.properties.name,label:d.properties.label,group:listGroup(d)})),
+      records:exportedRecords
+    };
+    downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}),`korea-trip-map-${fileDate()}.json`);
+  }
+  function saveImage() {
+    const namespace='http://www.w3.org/2000/svg',source=document.getElementById('map');
+    const clone=source.cloneNode(true),size=2700;
+    clone.setAttribute('xmlns',namespace); clone.setAttribute('width',size); clone.setAttribute('height',size);
+    const style=document.createElementNS(namespace,'style');
+    style.textContent='.land{fill:#fafcf9;fill-rule:evenodd;stroke:#64736c;stroke-width:.8;stroke-linejoin:round;vector-effect:non-scaling-stroke}.land.is-active{stroke:#152923;stroke-width:1.7}.place-label{fill:#263832;text-anchor:middle;dominant-baseline:central;pointer-events:none;font-weight:500;font-family:Malgun Gothic,Apple SD Gothic Neo,sans-serif}.province-border{fill:none;stroke:#31453b;stroke-width:2.2;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}';
+    clone.insertBefore(style,clone.firstChild);
+    const background=document.createElementNS(namespace,'rect');
+    background.setAttribute('width','100%'); background.setAttribute('height','100%'); background.setAttribute('fill','#ffffff');
+    clone.insertBefore(background,style.nextSibling);
+    const svgBlob=new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml;charset=utf-8'});
+    const url=URL.createObjectURL(svgBlob),image=new Image();
+    image.onload=()=>{
+      const canvas=document.createElement('canvas'); canvas.width=size; canvas.height=size;
+      const context=canvas.getContext('2d'); context.fillStyle='#ffffff'; context.fillRect(0,0,size,size);
+      context.drawImage(image,0,0,size,size); URL.revokeObjectURL(url);
+      canvas.toBlob(blob=>{if(blob) downloadBlob(blob,`korea-trip-map-${fileDate()}.png`);},'image/png');
+    };
+    image.onerror=()=>{URL.revokeObjectURL(url);document.getElementById('save-message').textContent='이미지 저장에 실패했습니다';};
+    image.src=url;
+  }
   function selectRegion(d) {
     activeId=d.properties.id; updateMap();
     list.querySelectorAll('.region-row').forEach(el=>el.classList.toggle('is-active',el.dataset.regionId===activeId));
@@ -300,6 +344,8 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
     save(); updateMap(); updateCounts();
   });
   search.addEventListener('input',()=>renderList(search.value));
+  document.getElementById('save-image').addEventListener('click',saveImage);
+  document.getElementById('save-json').addEventListener('click',saveJSON);
   document.getElementById('reset-button').addEventListener('click',()=>{
     if(!window.confirm('거주·숙박·방문 기록을 모두 초기화할까요?')) return;
     records={}; activeId=null;
