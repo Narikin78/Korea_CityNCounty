@@ -100,7 +100,7 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
 <div class="app">
   <header class="topbar">
     <div class="brand"><h1>대한민국 나의 지도</h1><span class="tagline">살고, 묵고, 걸었던 곳을 기록해 보세요</span></div>
-    <div class="top-actions"><button class="download-button" id="save-image" type="button">이미지 저장</button><button class="download-button" id="save-json" type="button">JSON 저장</button><div class="save-state" title="기록은 현재 기기의 브라우저에 저장됩니다"><span class="save-dot" aria-hidden="true"></span><span id="save-message">이 기기에 자동 저장</span></div></div>
+    <div class="top-actions"><button class="download-button" id="save-image" type="button">이미지 저장</button><button class="download-button" id="save-json" type="button">JSON 저장</button><button class="download-button" id="load-json" type="button">JSON 불러오기</button><input id="load-json-file" type="file" accept=".json,application/json" hidden><div class="save-state" title="기록은 현재 기기의 브라우저에 저장됩니다"><span class="save-dot" aria-hidden="true"></span><span id="save-message">이 기기에 자동 저장</span></div></div>
   </header>
   <main>
     <section class="map-panel" aria-label="대한민국 지도">
@@ -368,6 +368,28 @@ main { height:100%; min-height:0; overflow:hidden; display:grid; grid-template-c
   search.addEventListener('input',()=>renderList(search.value));
   document.getElementById('save-image').addEventListener('click',saveImage);
   document.getElementById('save-json').addEventListener('click',saveJSON);
+  const importFile=document.getElementById('load-json-file');
+  document.getElementById('load-json').addEventListener('click',()=>importFile.click());
+  importFile.addEventListener('change',async()=>{
+    const file=importFile.files&&importFile.files[0];
+    if(!file) return;
+    try {
+      const data=JSON.parse(await file.text());
+      if(!data||data.format!=='korea-trip-map'||!data.records||typeof data.records!=='object'||Array.isArray(data.records))
+        throw new Error('지원하지 않는 JSON 형식입니다.');
+      const restored={};
+      for(const [id,value] of Object.entries(data.records)) {
+        if(!known.has(id)||!value||typeof value!=='object'||Array.isArray(value)) continue;
+        const state=Object.fromEntries(statuses.map(status=>[status.id,value[status.id]===true]));
+        if(Object.values(state).some(Boolean)) restored[id]=state;
+      }
+      if(!window.confirm('현재 기록을 이 JSON 파일의 기록으로 바꿀까요?')) return;
+      records=restored; activeId=null; save(); renderList(search.value); updateMap(); updateCounts();
+      document.getElementById('save-message').textContent='JSON 기록을 불러왔습니다';
+    } catch {
+      window.alert('JSON 파일을 읽지 못했습니다. 이 지도에서 저장한 JSON인지 확인해 주세요.');
+    } finally { importFile.value=''; }
+  });
   document.getElementById('reset-button').addEventListener('click',()=>{
     if(!window.confirm('거주·숙박·방문 기록을 모두 초기화할까요?')) return;
     records={}; activeId=null;
